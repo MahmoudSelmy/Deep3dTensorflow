@@ -1,12 +1,13 @@
 import tensorflow as tf
 import numpy as np
 
-class Vgg16Model:
+
+class Helper:
     def __init__(self, weights_path='./weights/deep3d.npy'):
         self.weights = np.load('vgg16.npy', encoding='latin1').item()
         self.trainable = False
 
-    def add_convolutional_layer(self,input,name,padding):
+    def add_convolutional_layer(self, input, name, padding):
         weights_key = name + '_weight'
         biases_key = name + '_bias'
 
@@ -15,23 +16,23 @@ class Vgg16Model:
 
         no_of_filters, height, width, channels = kernel.shape
 
-        padded_input = tf.pad(input, [[0, 0], [padding[0], padding[0]], [padding[1], padding[1]], [0, 0]],'CONSTANT')
+        padded_input = tf.pad(input, [[0, 0], [padding[0], padding[0]], [padding[1], padding[1]], [0, 0]], 'CONSTANT')
 
         layer = tf.layers.conv2d(padded_input, no_of_filters, kernel_size=(height, width),
                                  padding='VALID', name=name, trainable=self.trainable,
                                  kernel_initializer=tf.constant_initializer(kernel, dtype=tf.float32),
-                                 bias_initializer=tf.constant_initializer(bias, dtype=tf.float32),use_bias=True)
+                                 bias_initializer=tf.constant_initializer(bias, dtype=tf.float32), use_bias=True)
         return layer
 
-    def add_pooling_layer(self,input,name):
-        layer = tf.nn.max_pool(input,ksize=[1,2,2,1],strides=[1,2,2, 1],padding='VALID', name=name)
+    def add_pooling_layer(self, input, name):
+        layer = tf.nn.max_pool(input, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='VALID', name=name)
         return layer
 
-    def add_activation_layer(self,input,name):
-        layer = tf.nn.relu(input,name=name)
+    def add_activation_layer(self, input, name):
+        layer = tf.nn.relu(input, name=name)
         return layer
 
-    def add_fully_connected(self,input,name):
+    def add_fully_connected(self, input, name):
         weights_key = name + '_weight'
         biases_key = name + '_bias'
 
@@ -42,10 +43,10 @@ class Vgg16Model:
 
         return layer
 
-    def add_batch_normalization_layer(self,input,name):
+    def add_batch_normalization_layer(self, input, name):
         beta_name = name + '_beta'
         gamma_name = name + '_gamma'
-        moving_inv_var_name  = name + '_moving_inv_var'
+        moving_inv_var_name = name + '_moving_inv_var'
         moving_mean_name = name + '_moving_mean'
 
         beta = self.weights[beta_name]
@@ -58,15 +59,16 @@ class Vgg16Model:
 
         return layer
 
-    def add_deconvolutional_layer(self,input,scale,name):
+    def add_deconvolutional_layer(self, input, scale, name):
         weights_key = name + '_weight'
         biases_key = name + '_bias'
 
         weights = self.weights[weights_key]
         bias = self.weights[biases_key]
 
-        weights_var = tf.get_variable(name= weights_key,shape=weights.shape,initializer=tf.constant_initializer(weights))
-        bias_var = tf.get_variable(name= biases_key,shape=bias.shape,initializer=tf.constant_initializer(bias))
+        weights_var = tf.get_variable(name=weights_key, shape=weights.shape,
+                                      initializer=tf.constant_initializer(weights))
+        bias_var = tf.get_variable(name=biases_key, shape=bias.shape, initializer=tf.constant_initializer(bias))
 
         dyn_input_shape = tf.shape(input)
         N = dyn_input_shape[0]
@@ -84,7 +86,7 @@ class Vgg16Model:
 
         return layer
 
-    def add_selection_layer(self,masks, left_image, left_shift=16, name="select"):
+    def add_selection_layer(self, masks, left_image, left_shift=16, name="select"):
         _, H, W, S = masks.get_shape().as_list()
         with tf.variable_scope(name):
             padded = tf.pad(left_image, [[0, 0], [0, 0], [left_shift, left_shift], [0, 0]], mode='REFLECT')
@@ -98,4 +100,3 @@ class Vgg16Model:
             disparity_image = tf.multiply(slices, tf.expand_dims(masks, axis=3))
 
             return tf.reduce_sum(disparity_image, axis=4)
-
