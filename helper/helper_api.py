@@ -1,10 +1,9 @@
 import tensorflow as tf
 import numpy as np
 
-
 class Helper:
     def __init__(self, weights_path='./weights/deep3d.npy'):
-        self.weights = np.load('vgg16.npy', encoding='latin1').item()
+        self.weights = np.load(weights_path, encoding='latin1').item()
         self.trainable = False
 
     def add_convolutional_layer(self, input, name, padding):
@@ -17,11 +16,20 @@ class Helper:
         no_of_filters, height, width, channels = kernel.shape
 
         padded_input = tf.pad(input, [[0, 0], [padding[0], padding[0]], [padding[1], padding[1]], [0, 0]], 'CONSTANT')
-
+        '''
         layer = tf.layers.conv2d(padded_input, no_of_filters, kernel_size=(height, width),
                                  padding='VALID', name=name, trainable=self.trainable,
                                  kernel_initializer=tf.constant_initializer(kernel, dtype=tf.float32),
                                  bias_initializer=tf.constant_initializer(bias, dtype=tf.float32), use_bias=True)
+        '''
+        kernel = np.transpose(kernel,(2,3,1,0))
+        weights_var = tf.get_variable(name=weights_key, shape=kernel.shape,
+                                      initializer=tf.constant_initializer(kernel))
+        bias_var = tf.get_variable(name=biases_key, shape=bias.shape, initializer=tf.constant_initializer(bias))
+        print(name + str(kernel.shape) + str(bias.shape))
+        conv = tf.nn.conv2d(padded_input, weights_var, [1, 1, 1, 1], padding='VALID')
+        print(conv.shape)
+        layer = tf.nn.bias_add(conv, bias_var)
         return layer
 
     def add_pooling_layer(self, input, name):
@@ -29,7 +37,7 @@ class Helper:
         return layer
 
     def add_activation_layer(self, input, name):
-        layer = tf.nn.relu(input, name=name)
+        layer = tf.nn.relu(features=input, name=name)
         return layer
 
     def add_fully_connected(self, input, name):
@@ -37,6 +45,7 @@ class Helper:
         biases_key = name + '_bias'
 
         weights = self.weights[weights_key]
+        weights = np.transpose(weights,(1,0))
         bias = self.weights[biases_key]
 
         layer = tf.nn.xw_plus_b(input, weights, bias, name=name)
@@ -65,6 +74,9 @@ class Helper:
 
         weights = self.weights[weights_key]
         bias = self.weights[biases_key]
+        out_channels = weights.shape[0]
+
+        weights = np.transpose(weights, (2, 3, 1, 0))
 
         weights_var = tf.get_variable(name=weights_key, shape=weights.shape,
                                       initializer=tf.constant_initializer(weights))
@@ -75,28 +87,12 @@ class Helper:
         H = dyn_input_shape[1]
         W = dyn_input_shape[2]
 
-        out_channels = weights.shape[0]
         shape_output = tf.stack([N,
                                  scale * (H - 1) + scale * 2 - scale,
                                  scale * (W - 1) + scale * 2 - scale,
                                  out_channels])
-
         deconv = tf.nn.conv2d_transpose(input, weights_var, shape_output, [1, scale, scale, 1])
+        print(name + str(deconv.shape))
         layer = tf.nn.bias_add(deconv, bias_var)
 
         return layer
-
-    def add_selection_layer(self, masks, left_image, left_shift=16, name="select"):
-        _, H, W, S = masks.get_shape().as_list()
-        with tf.variable_scope(name):
-            padded = tf.pad(left_image, [[0, 0], [0, 0], [left_shift, left_shift], [0, 0]], mode='REFLECT')
-
-            # padded is the image padded whatever the left_shift variable is on either side
-            layers = []
-            for s in np.arange(S):
-                layers.append(tf.slice(padded, [0, 0, s, 0], [-1, H, W, -1]))
-
-            slices = tf.stack(layers, axis=4)
-            disparity_image = tf.multiply(slices, tf.expand_dims(masks, axis=3))
-
-            return tf.reduce_sum(disparity_image, axis=4)
